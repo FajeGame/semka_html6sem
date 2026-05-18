@@ -5,7 +5,7 @@ import type { Byudzhet, Kategoriya, PraviloMesyac, TipOper, Uchastnik } from '@/
 import { apiDeleteByudzhet, apiUpsertByudzhet } from '@/api/budgetApi'
 import { apiCreateKategoriya } from '@/api/categoryApi'
 import { apiCreatePravilo } from '@/api/recurringApi'
-import { apiAddUchastnik, apiSetCanSeeBudget } from '@/api/walletApi'
+import { apiAddUchastnik, apiRemoveUchastnik, apiSetCanSeeBudget } from '@/api/walletApi'
 import IconPicker from '@/components/wallet/IconPicker.vue'
 import {
   DEN_MAX,
@@ -19,6 +19,7 @@ import {
   SUMMA_MAX,
   SUMMA_MIN,
 } from '@/utils/inputLimits'
+import { soobshenieOshibki } from '@/utils/apiError'
 
 const props = defineProps<{
   open: boolean
@@ -33,6 +34,7 @@ const emit = defineEmits<{ close: []; refresh: [] }>()
 
 // приглашение участника
 const nickNew = ref('')
+const oshibkaInvite = ref('')
 
 // своя категория
 const imyaKat = ref('')
@@ -75,14 +77,35 @@ watch(obshiyBud, (b) => {
 })
 
 async function priglasit() {
-  await apiAddUchastnik(props.walletId, nickNew.value.trim())
-  nickNew.value = ''
-  emit('refresh')
+  oshibkaInvite.value = ''
+  const nick = nickNew.value.trim()
+  if (!nick) {
+    oshibkaInvite.value = 'введите ник'
+    return
+  }
+  try {
+    await apiAddUchastnik(props.walletId, nick)
+    nickNew.value = ''
+    oshibkaInvite.value = ''
+    emit('refresh')
+  } catch (e: unknown) {
+    oshibkaInvite.value = soobshenieOshibki(e)
+  }
 }
 
 async function toggleBudget(u: Uchastnik) {
   await apiSetCanSeeBudget(props.walletId, u.id, !u.canSeeBudget)
   emit('refresh')
+}
+
+async function udalitUchastnika(u: Uchastnik) {
+  if (!confirm(`Удалить @${u.nick} из кошелька?`)) return
+  try {
+    await apiRemoveUchastnik(props.walletId, u.id)
+    emit('refresh')
+  } catch (e: unknown) {
+    oshibkaInvite.value = soobshenieOshibki(e)
+  }
 }
 
 async function sohranitObshiy() {
@@ -202,6 +225,8 @@ async function addPravilo() {
         <h3>Пригласить по нику</h3>
         <input v-model="nickNew" placeholder="ник пользователя" />
         <button type="button" class="btn-primary" @click="priglasit">пригласить</button>
+        <p v-if="oshibkaInvite" class="err">{{ oshibkaInvite }}</p>
+        <p class="muted">ник должен совпадать с регистрацией (без @)</p>
       </section>
 
       <!-- лимиты бюджета -->
@@ -264,10 +289,15 @@ async function addPravilo() {
           <li v-for="u in uchastniki" :key="u.id" class="member-row">
             <span class="member-nick">@{{ u.nick }}</span>
             <span v-if="u.memberRole === 'WALLET_OWNER'" class="muted">владелец</span>
-            <label v-else class="budget-toggle">
-              <input type="checkbox" :checked="u.canSeeBudget" @change="toggleBudget(u)" />
-              <span>показывать бюджет</span>
-            </label>
+            <template v-else>
+              <label class="budget-toggle">
+                <input type="checkbox" :checked="u.canSeeBudget" @change="toggleBudget(u)" />
+                <span>показывать бюджет</span>
+              </label>
+              <button type="button" class="btn-remove-member" @click="udalitUchastnika(u)">
+                удалить
+              </button>
+            </template>
           </li>
         </ul>
       </section>
@@ -402,6 +432,18 @@ section h3 {
 .budget-toggle input {
   width: auto;
   margin: 0;
+}
+.btn-remove-member {
+  border: 1px solid var(--color-danger);
+  background: transparent;
+  color: var(--color-danger);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.btn-remove-member:hover {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
 }
 .color-inp {
   height: 44px;

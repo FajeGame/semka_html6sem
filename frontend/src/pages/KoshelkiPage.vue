@@ -1,29 +1,70 @@
 <script setup lang="ts">
 // список кошельков пользователя и создание нового
 import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { apiCreateKoshelek, apiListKoshelki } from '@/api/walletApi'
+import { apiDeleteAccount } from '@/api/authApi'
 import type { Koshelek } from '@/types/models'
 import { useAuthStore } from '@/stores/authStore'
 import ThemeToggle from '@/components/ThemeToggle.vue'
+import { soobshenieOshibki } from '@/utils/apiError'
 
+const router = useRouter()
 const auth = useAuthStore()
 const spisok = ref<Koshelek[]>([])
 const imyaNew = ref('')
 const sozdaem = ref(false)
+const parolUdalit = ref('')
+const udalyaemAkkaunt = ref(false)
 
 async function zagruzit() {
   spisok.value = await apiListKoshelki()
 }
 
+const oshibka = ref('')
+const oshibkaAkkaunt = ref('')
+
 async function sozdat() {
-  if (!imyaNew.value.trim()) return
+  const name = imyaNew.value.trim()
+  if (!name) {
+    oshibka.value = 'введите название'
+    return
+  }
   sozdaem.value = true
+  oshibka.value = ''
   try {
-    await apiCreateKoshelek(imyaNew.value.trim())
+    await apiCreateKoshelek(name)
     imyaNew.value = ''
     await zagruzit()
+  } catch (e: unknown) {
+    oshibka.value = soobshenieOshibki(e)
   } finally {
     sozdaem.value = false
+  }
+}
+
+async function udalitAkkaunt() {
+  oshibkaAkkaunt.value = ''
+  if (!parolUdalit.value) {
+    oshibkaAkkaunt.value = 'введите пароль для подтверждения'
+    return
+  }
+  if (
+    !confirm(
+      'Удалить аккаунт безвозвратно? Ваши кошельки-владельца и операции будут удалены.',
+    )
+  ) {
+    return
+  }
+  udalyaemAkkaunt.value = true
+  try {
+    await apiDeleteAccount(parolUdalit.value)
+    auth.logout()
+    await router.push('/login')
+  } catch (e: unknown) {
+    oshibkaAkkaunt.value = soobshenieOshibki(e)
+  } finally {
+    udalyaemAkkaunt.value = false
   }
 }
 
@@ -59,12 +100,14 @@ onMounted(zagruzit)
         <h2>{{ k.name }}</h2>
         <span class="badge">{{ k.myRole === 'WALLET_OWNER' ? 'владелец' : 'участник' }}</span>
       </div>
-      <p v-if="k.budgetLimit != null" class="budget-line">
-        бюджет месяца:
-        <strong>{{ k.budgetRemaining ?? 0 }}</strong>
-        / {{ k.budgetLimit }} ₽ осталось
-      </p>
-      <p v-else class="budget-line muted">бюджет не задан</p>
+      <template v-if="k.canSeeBudget">
+        <p v-if="k.budgetLimit != null" class="budget-line">
+          бюджет месяца:
+          <strong>{{ k.budgetRemaining ?? 0 }}</strong>
+          / {{ k.budgetLimit }} ₽ осталось
+        </p>
+        <p v-else class="budget-line muted">бюджет не задан</p>
+      </template>
     </router-link>
 
     <!-- форма нового кошелька (только владелец при создании) -->
@@ -74,6 +117,29 @@ onMounted(zagruzit)
       <button type="button" class="btn-primary" :disabled="sozdaem" @click="sozdat">
         создать
       </button>
+      <p v-if="oshibka" class="err">{{ oshibka }}</p>
+    </section>
+
+    <section class="card account-delete">
+      <h3>Удалить аккаунт</h3>
+      <p class="muted">
+        Удалятся ваши кошельки-владельца и операции. Демо-аккаунты papa/mama удалить нельзя.
+      </p>
+      <input
+        v-model="parolUdalit"
+        type="password"
+        placeholder="текущий пароль"
+        autocomplete="current-password"
+      />
+      <button
+        type="button"
+        class="btn-danger-outline"
+        :disabled="udalyaemAkkaunt"
+        @click="udalitAkkaunt"
+      >
+        удалить аккаунт
+      </button>
+      <p v-if="oshibkaAkkaunt" class="err">{{ oshibkaAkkaunt }}</p>
     </section>
   </div>
 </template>
@@ -136,5 +202,38 @@ onMounted(zagruzit)
 .empty {
   text-align: center;
   color: var(--color-muted);
+}
+.account-delete {
+  margin-top: 20px;
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+}
+.account-delete h3 {
+  margin: 0 0 8px;
+  color: var(--color-danger);
+  font-size: 1rem;
+}
+.account-delete input {
+  margin-bottom: 10px;
+}
+.btn-danger-outline {
+  border: 1px solid var(--color-danger);
+  background: transparent;
+  color: var(--color-danger);
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+.btn-danger-outline:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+}
+.btn-danger-outline:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.err {
+  color: var(--color-danger);
+  font-size: 0.85rem;
+  margin-top: 8px;
 }
 </style>

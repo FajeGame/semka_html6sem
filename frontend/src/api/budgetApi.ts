@@ -9,6 +9,16 @@ export async function apiListByudzhet(walletId: number, userId: number): Promise
   return data
 }
 
+export async function apiCreateByudzhet(
+  walletId: number,
+  categoryId: number | null,
+  limitAmount: number,
+): Promise<Byudzhet> {
+  if (useMock) return mockDb.upsertByudzhet(walletId, categoryId, limitAmount)
+  const { data } = await http.post<Byudzhet>('/budgets', { walletId, categoryId, limitAmount })
+  return data
+}
+
 export async function apiUpsertByudzhet(
   walletId: number,
   categoryId: number | null,

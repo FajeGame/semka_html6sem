@@ -1,4 +1,4 @@
-# полный стек — после появления Dockerfile в backend/ и frontend/
+# полный стек: postgres + redis + backend + frontend
 services:
   postgres:
     image: postgres:16-alpine
@@ -26,27 +26,31 @@ services:
       timeout: 3s
       retries: 5
 
-  # backend:
-  #   build: ./backend
-  #   ports:
-  #     - "8080:8080"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/semka
-  #     SPRING_DATASOURCE_USERNAME: semka
-  #     SPRING_DATASOURCE_PASSWORD: semka
-  #     SPRING_DATA_REDIS_HOST: redis
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/semka
+      SPRING_DATASOURCE_USERNAME: semka
+      SPRING_DATASOURCE_PASSWORD: semka
+      SPRING_DATA_REDIS_HOST: redis
 
-  # frontend:
-  #   build: ./frontend
-  #   ports:
-  #     - "80:80"
-  #   depends_on:
-  #     - backend
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8080/api
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
 
 volumes:
   pg_data:

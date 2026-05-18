@@ -3,6 +3,8 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
+import { soobshenieOshibki } from '@/utils/apiError'
+import axios from 'axios'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -26,8 +28,12 @@ async function voiti() {
   try {
     await auth.login(email.value, parol.value)
     router.push('/koshelki')
-  } catch {
-    oshibka.value = 'не получилось войти'
+  } catch (e: unknown) {
+    if (axios.isAxiosError(e) && !e.response) {
+      oshibka.value = 'сервер недоступен — запустите Docker (postgres, redis) и backend: gradlew bootRun'
+    } else {
+      oshibka.value = soobshenieOshibki(e) || 'неверный email или пароль'
+    }
   }
 }
 </script>
@@ -36,7 +42,10 @@ async function voiti() {
   <div class="page auth-page">
     <div class="card auth-card">
       <h1>Семейный кошелёк</h1>
-      <p class="hint">тест: papa@test.ru / mama@test.ru — любой пароль</p>
+      <p class="hint">
+        тест (backend): <strong>papa@test.ru</strong> или <strong>mama@test.ru</strong>, пароль
+        <strong>password</strong>
+      </p>
       <label>email</label>
       <input v-model="email" type="email" autocomplete="email" />
       <label>пароль</label>

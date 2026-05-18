@@ -15,6 +15,7 @@ export interface Koshelek {
   id: number
   name: string
   myRole: RolKoshelka
+  canSeeBudget: boolean
   budgetRemaining?: number
   budgetLimit?: number
 }

@@ -21,6 +21,17 @@ export async function apiCreateKoshelek(name: string): Promise<Koshelek> {
   return data
 }
 
+export async function apiUpdateKoshelek(walletId: number, name: string): Promise<Koshelek> {
+  if (useMock) return mockDb.updateKoshelek(walletId, name)
+  const { data } = await http.put<Koshelek>(`/wallets/${walletId}`, { name })
+  return data
+}
+
+export async function apiDeleteKoshelek(walletId: number): Promise<void> {
+  if (useMock) return mockDb.deleteKoshelek(walletId)
+  await http.delete(`/wallets/${walletId}`)
+}
+
 export async function apiGetBalans(walletId: number): Promise<Balans> {
   if (useMock) return mockDb.getBalans(walletId)
   const { data } = await http.get<Balans>(`/wallets/${walletId}/balance`)
@@ -45,4 +56,14 @@ export async function apiSetCanSeeBudget(
 ): Promise<void> {
   if (useMock) return mockDb.setCanSeeBudget(memberId, canSeeBudget)
   await http.patch(`/wallets/${walletId}/members/${memberId}`, { canSeeBudget })
+}
+
+export async function apiRemoveUchastnik(walletId: number, memberId: number): Promise<void> {
+  if (useMock) return mockDb.removeUchastnik(walletId, memberId)
+  await http.delete(`/wallets/${walletId}/members/${memberId}`)
+}
+
+export async function apiLeaveKoshelek(walletId: number): Promise<void> {
+  if (useMock) return mockDb.leaveKoshelek(walletId)
+  await http.post(`/wallets/${walletId}/leave`)
 }

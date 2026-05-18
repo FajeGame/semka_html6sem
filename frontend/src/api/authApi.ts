@@ -24,3 +24,8 @@ export async function apiMe(): Promise<UserMe> {
   const { data } = await http.get<UserMe>('/auth/me')
   return data
 }
+
+export async function apiDeleteAccount(password: string): Promise<void> {
+  if (useMock) return mockDb.deleteAccount(password)
+  await http.delete('/auth/me', { data: { password } })
+}

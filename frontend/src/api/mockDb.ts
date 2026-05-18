@@ -62,7 +62,29 @@ function nidOther() {
 // тестовые пользователи и демо-данные кошелька «Семья»
 const userPapa: UserMe = { id: 1, email: 'papa@test.ru', nick: 'papa', role: 'USER' }
 const userMama: UserMe = { id: 2, email: 'mama@test.ru', nick: 'mama', role: 'USER' }
-const zaregistrirovannye: UserMe[] = []
+
+/** Общий список регистраций для всех вкладок (mock без backend). */
+const MOCK_USERS_KEY = 'semka_mock_users'
+
+function loadRegistered(): UserMe[] {
+  try {
+    const raw = localStorage.getItem(MOCK_USERS_KEY)
+    return raw ? (JSON.parse(raw) as UserMe[]) : []
+  } catch {
+    return []
+  }
+}
+
+function saveRegistered(list: UserMe[]) {
+  localStorage.setItem(MOCK_USERS_KEY, JSON.stringify(list))
+}
+
+let zaregistrirovannye: UserMe[] = loadRegistered()
+
+function allKnownUsers(): UserMe[] {
+  zaregistrirovannye = loadRegistered()
+  return [...zaregistrirovannye, userPapa, userMama]
+}
 
 let curUser: UserMe | null = null
 
@@ -230,11 +252,13 @@ function proveritVladelec(walletId: number) {
 function toKoshelek(walletId: number, userId: number): Koshelek {
   const k = koshelki.find((x) => x.id === walletId)!
   const mem = findMember(walletId, userId)!
-  const bud = obshiyByudzhet(walletId)
+  const canSee = mem.memberRole === 'WALLET_OWNER' || mem.canSeeBudget
+  const bud = canSee ? obshiyByudzhet(walletId) : null
   return {
     id: k.id,
     name: k.name,
     myRole: mem.memberRole,
+    canSeeBudget: canSee,
     budgetLimit: bud?.limit,
     budgetRemaining: bud?.remaining,
   }
@@ -268,7 +292,7 @@ export const mockDb = {
     if (email.includes('mama')) curUser = { ...userMama }
     else if (email.includes('papa')) curUser = { ...userPapa }
     else {
-      const u = zaregistrirovannye.find((x) => x.email === email)
+      const u = loadRegistered().find((x) => x.email === email)
       if (!u) throw new Error('нет такого')
       curUser = u
     }
@@ -276,12 +300,14 @@ export const mockDb = {
   },
 
   register(data: { email: string; password: string; nick: string }): LoginOtvet {
-    if (zaregistrirovannye.some((u) => u.email === data.email || u.nick === data.nick)) {
+    const existing = loadRegistered()
+    if (existing.some((u) => u.email === data.email || u.nick === data.nick)) {
       throw new Error('занято')
     }
     if (['papa', 'mama'].includes(data.nick)) throw new Error('ник занят')
     const u: UserMe = { id: nidUser(), email: data.email, nick: data.nick, role: 'USER' }
-    zaregistrirovannye.push(u)
+    zaregistrirovannye = [...loadRegistered(), u]
+    saveRegistered(zaregistrirovannye)
     curUser = u
     return { token: 'mock-' + u.id, user: u }
   },
@@ -315,11 +341,23 @@ export const mockDb = {
     return kategorii.filter((k) => k.walletId === walletId && (!tip || k.tip === tip))
   },
 
+  getKategoriya(id: number): Kategoriya {
+    const k = kategorii.find((c) => c.id === id)
+    if (!k) throw new Error('категория не найдена')
+    return k
+  },
+
   listOperacii(walletId: number, tip?: string): Operaciya[] {
     return operacii
       .filter((o) => o.walletId === walletId && (!tip || o.type === tip))
       .sort((a, b) => b.transactionDate.localeCompare(a.transactionDate))
       .map(obogatitSplit)
+  },
+
+  getOperaciya(id: number): Operaciya {
+    const o = operacii.find((x) => x.id === id)
+    if (!o) throw new Error('операция не найдена')
+    return obogatitSplit(o)
   },
 
   // --- бюджеты ---
@@ -447,8 +485,8 @@ export const mockDb = {
   },
 
   addUchastnik(walletId: number, nick: string): void {
-    const u = [...zaregistrirovannye, userPapa, userMama].find((x) => x.nick === nick)
-    if (!u) throw new Error('ник не найден — человек должен зарегистрироваться')
+    const u = allKnownUsers().find((x) => x.nick === nick)
+    if (!u) throw new Error('ник не найден — человек должен зарегистрироваться в системе')
     if (findMember(walletId, u.id)) throw new Error('уже в кошельке')
     members.push({
       id: nidMember(),
@@ -463,6 +501,45 @@ export const mockDb = {
   setCanSeeBudget(uchastnikId: number, val: boolean): void {
     const u = members.find((x) => x.id === uchastnikId)
     if (u) u.canSeeBudget = val
+  },
+
+  removeUchastnik(walletId: number, uchastnikId: number): void {
+    if (!curUser) throw new Error('войдите')
+    proveritVladelec(walletId)
+    const m = members.find((x) => x.id === uchastnikId && x.walletId === walletId)
+    if (!m) throw new Error('участник не найден')
+    if (m.memberRole === 'WALLET_OWNER') throw new Error('нельзя удалить владельца')
+    members.splice(
+      members.findIndex((x) => x.id === uchastnikId),
+      1,
+    )
+  },
+
+  leaveKoshelek(walletId: number): void {
+    if (!curUser) throw new Error('войдите')
+    const uid = curUser.id
+    const m = findMember(walletId, uid)
+    if (!m) throw new Error('нет доступа')
+    if (m.memberRole === 'WALLET_OWNER') {
+      throw new Error('владелец не может выйти — удалите кошелёк')
+    }
+    members.splice(
+      members.findIndex((x) => x.walletId === walletId && x.userId === uid),
+      1,
+    )
+  },
+
+  deleteAccount(_password: string): void {
+    if (!curUser) throw new Error('войдите')
+    if (['papa', 'mama'].includes(curUser.nick)) throw new Error('демо-аккаунт нельзя удалить')
+    const uid = curUser.id
+    const owned = koshelki.filter((k) => members.some((m) => m.walletId === k.id && m.userId === uid && m.memberRole === 'WALLET_OWNER'))
+    for (const w of owned) mockDb.deleteKoshelek(w.id)
+    members.splice(0, members.length, ...members.filter((m) => m.userId !== uid))
+    operacii.splice(0, operacii.length, ...operacii.filter((o) => o.authorId !== uid))
+    zaregistrirovannye = loadRegistered().filter((u) => u.id !== uid)
+    saveRegistered(zaregistrirovannye)
+    curUser = null
   },
 
   addKategoriya(data: NovayaKategoriya): Kategoriya {
@@ -553,5 +630,97 @@ export const mockDb = {
       const d = splitDoli[j]
       if (d && d.transactionId === id) splitDoli.splice(j, 1)
     }
+  },
+
+  updateKoshelek(id: number, name: string): Koshelek {
+    const w = koshelki.find((k) => k.id === id)
+    if (!w) throw new Error('кошелёк не найден')
+    w.name = name
+    return toKoshelek(id, curUser!.id)
+  },
+
+  deleteKoshelek(id: number): void {
+    koshelki.splice(
+      koshelki.findIndex((k) => k.id === id),
+      1,
+    )
+    members.splice(
+      0,
+      members.length,
+      ...members.filter((m) => m.walletId !== id),
+    )
+    kategorii.splice(
+      0,
+      kategorii.length,
+      ...kategorii.filter((k) => k.walletId !== id),
+    )
+    operacii.splice(
+      0,
+      operacii.length,
+      ...operacii.filter((o) => o.walletId !== id),
+    )
+    byudzhety.splice(
+      0,
+      byudzhety.length,
+      ...byudzhety.filter((b) => b.walletId !== id),
+    )
+    pravila.splice(
+      0,
+      pravila.length,
+      ...pravila.filter((p) => p.walletId !== id),
+    )
+  },
+
+  updateKategoriya(
+    id: number,
+    data: { name: string; iconKey: string; colorBg: string },
+  ): Kategoriya {
+    const k = kategorii.find((c) => c.id === id)
+    if (!k) throw new Error('категория не найдена')
+    Object.assign(k, data)
+    return k
+  },
+
+  deleteKategoriya(id: number): void {
+    if (operacii.some((o) => o.categoryId === id)) throw new Error('есть операции с этой категорией')
+    kategorii.splice(
+      kategorii.findIndex((c) => c.id === id),
+      1,
+    )
+  },
+
+  updateOperaciya(
+    id: number,
+    data: {
+      categoryId: number
+      type: Operaciya['type']
+      amount: number
+      transactionDate: string
+      comment?: string
+    },
+  ): Operaciya {
+    if (splitDoli.some((d) => d.transactionId === id)) {
+      throw new Error('операцию с разделением чека нельзя редактировать')
+    }
+    const o = operacii.find((x) => x.id === id)
+    if (!o) throw new Error('операция не найдена')
+    const kat = kategorii.find((k) => k.id === data.categoryId)
+    Object.assign(o, data, { categoryName: kat?.name || '?' })
+    return o
+  },
+
+  updatePravilo(id: number, data: Omit<PraviloMesyac, 'id' | 'categoryName'>): PraviloMesyac {
+    const p = pravila.find((x) => x.id === id)
+    if (!p) throw new Error('правило не найдено')
+    Object.assign(p, data)
+    p.categoryName = kategorii.find((k) => k.id === p.categoryId)?.name
+    return p
+  },
+
+  deletePravilo(id: number): void {
+    pravila.splice(
+      pravila.findIndex((p) => p.id === id),
+      1,
+    )
   },
 }

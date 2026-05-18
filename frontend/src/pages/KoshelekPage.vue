@@ -1,8 +1,14 @@
 <script setup lang="ts">
 // страница одного кошелька: баланс, операции, бюджет, отчёт
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { apiGetBalans, apiGetKoshelek, apiListUchastniki } from '@/api/walletApi'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  apiDeleteKoshelek,
+  apiGetBalans,
+  apiGetKoshelek,
+  apiLeaveKoshelek,
+  apiListUchastniki,
+} from '@/api/walletApi'
 import { apiListKategorii } from '@/api/categoryApi'
 import { apiListOperacii, apiDeleteOperaciya, apiCreateOperaciya, apiSplit } from '@/api/transactionApi'
 import { apiListByudzhet } from '@/api/budgetApi'
@@ -35,8 +41,10 @@ import {
   SUMMA_MAX,
   SUMMA_MIN,
 } from '@/utils/inputLimits'
+import { soobshenieOshibki } from '@/utils/apiError'
 
 const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
 const walletId = computed(() => Number(route.params.id))
 
@@ -53,6 +61,9 @@ const pravila = ref<PraviloMesyac[]>([])
 const aktivTip = ref<TipOper>('EXPENSE')
 const panelOpen = ref(false) // боковое меню настроек владельца
 const lockMsg = ref('')
+const loading = ref(false)
+const oshibkaZagruzki = ref('')
+const oshibkaKoshelek = ref('')
 const formaOtkryta = ref(true)
 
 // форма новой операции
@@ -140,27 +151,58 @@ watch(aktivTip, () => {
   vybrKatId.value = perv?.id ?? 0
 })
 
-// загрузка всех данных кошелька
+// загрузка всех данных кошелька (параллельно, с обработкой ошибок)
 async function zagruzit() {
-  if (!auth.user) return
   const wid = walletId.value
-  koshelek.value = await apiGetKoshelek(wid)
-  balans.value = await apiGetBalans(wid)
-  kategorii.value = await apiListKategorii(wid)
-  operacii.value = await apiListOperacii(wid, aktivTip.value)
-  uchastniki.value = await apiListUchastniki(wid)
-  byudzhety.value = await apiListByudzhet(wid, auth.user.id)
-  const { from, to } = periodMesyac.value
-  rashodyPoLyudyam.value = await apiRashodyPoLyudyam(wid, from, to)
-  if (isOwner.value) pravila.value = await apiListPravila(wid)
-  vybrUchast.value = uchastniki.value.map((u) => u.userId)
-  const pk = katFiltered.value[0]
-  if (pk && !vybrKatId.value) vybrKatId.value = pk.id
+  if (!wid || Number.isNaN(wid)) return
+
+  loading.value = true
+  oshibkaZagruzki.value = ''
+  try {
+    if (!auth.user) await auth.loadMe()
+
+    const k = await apiGetKoshelek(wid)
+    koshelek.value = k
+    const owner = k.myRole === 'WALLET_OWNER'
+    const { from, to } = periodMesyac.value
+    const uid = auth.user!.id
+
+    const [b, kat, op, uch, bud, rashod, prav] = await Promise.all([
+      apiGetBalans(wid),
+      apiListKategorii(wid),
+      apiListOperacii(wid, aktivTip.value),
+      apiListUchastniki(wid),
+      apiListByudzhet(wid, uid),
+      apiRashodyPoLyudyam(wid, from, to),
+      owner ? apiListPravila(wid) : Promise.resolve([] as PraviloMesyac[]),
+    ])
+
+    balans.value = b
+    kategorii.value = kat
+    operacii.value = op
+    uchastniki.value = uch
+    byudzhety.value = bud
+    rashodyPoLyudyam.value = rashod
+    pravila.value = prav
+    vybrUchast.value = uch.map((u) => u.userId)
+    const pk = kat.find((x) => x.tip === aktivTip.value)
+    if (pk) vybrKatId.value = pk.id
+  } catch (e: unknown) {
+    oshibkaZagruzki.value = soobshenieOshibki(e)
+  } finally {
+    loading.value = false
+  }
 }
 
 async function smenitTip(t: TipOper) {
   aktivTip.value = t
-  operacii.value = await apiListOperacii(walletId.value, t)
+  try {
+    operacii.value = await apiListOperacii(walletId.value, t)
+    const pk = kategorii.value.find((k) => k.tip === t)
+    if (pk) vybrKatId.value = pk.id
+  } catch (e: unknown) {
+    oshibkaZagruzki.value = soobshenieOshibki(e)
+  }
 }
 
 function vybratKat(id: number) {
@@ -256,9 +298,36 @@ async function podtverditUdalit(id: number, authorNick: string, e: Event) {
   await zagruzit()
 }
 
-onMounted(async () => {
-  await auth.loadMe()
-  await zagruzit()
+async function udalitKoshelek() {
+  oshibkaKoshelek.value = ''
+  const name = koshelek.value?.name || 'кошелёк'
+  if (!confirm(`Удалить кошелёк «${name}»? Все операции и участники будут удалены.`)) return
+  try {
+    await apiDeleteKoshelek(walletId.value)
+    await router.push('/koshelki')
+  } catch (e: unknown) {
+    oshibkaKoshelek.value = soobshenieOshibki(e)
+  }
+}
+
+async function vyitiIzKoshelka() {
+  oshibkaKoshelek.value = ''
+  const name = koshelek.value?.name || 'кошелёк'
+  if (!confirm(`Выйти из кошелька «${name}»?`)) return
+  try {
+    await apiLeaveKoshelek(walletId.value)
+    await router.push('/koshelki')
+  } catch (e: unknown) {
+    oshibkaKoshelek.value = soobshenieOshibki(e)
+  }
+}
+
+watch(walletId, () => {
+  zagruzit()
+})
+
+onMounted(() => {
+  zagruzit()
   window.addEventListener('click', otmenitUdalit)
 })
 
@@ -285,6 +354,11 @@ onUnmounted(() => {
       </button>
     </header>
     <p v-if="lockMsg" class="lock-msg" @click="lockMsg = ''">{{ lockMsg }}</p>
+    <p v-if="loading" class="muted load-hint">загрузка данных…</p>
+    <p v-if="oshibkaZagruzki" class="err">
+      {{ oshibkaZagruzki }}
+      <button type="button" class="btn-ghost-sm" @click="zagruzit">повторить</button>
+    </p>
 
     <!-- сводка: доход / расход / разница -->
     <section class="card summary">
@@ -513,6 +587,27 @@ onUnmounted(() => {
       <p v-if="!operacii.length" class="empty">пока пусто</p>
     </section>
 
+    <!-- удаление кошелька / выход участника -->
+    <section class="card danger-zone">
+      <h3>{{ isOwner ? 'Удалить кошелёк' : 'Выйти из кошелька' }}</h3>
+      <p v-if="isOwner" class="muted">
+        Безвозвратно удалит кошелёк, все операции, категории и участников.
+      </p>
+      <p v-else class="muted">Вы перестанете видеть этот кошелёк. Операции останутся у владельца.</p>
+      <button
+        v-if="isOwner"
+        type="button"
+        class="btn-danger-outline"
+        @click="udalitKoshelek"
+      >
+        удалить кошелёк
+      </button>
+      <button v-else type="button" class="btn-danger-outline" @click="vyitiIzKoshelka">
+        выйти из кошелька
+      </button>
+      <p v-if="oshibkaKoshelek" class="err">{{ oshibkaKoshelek }}</p>
+    </section>
+
     <!-- боковое меню настроек владельца -->
     <OwnerPanel
       v-if="isOwner"
@@ -529,6 +624,28 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.danger-zone {
+  margin-top: 20px;
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+}
+.danger-zone h3 {
+  margin: 0 0 8px;
+  color: var(--color-danger);
+  font-size: 1rem;
+}
+.btn-danger-outline {
+  margin-top: 10px;
+  border: 1px solid var(--color-danger);
+  background: transparent;
+  color: var(--color-danger);
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+.btn-danger-outline:hover {
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+}
 .koshelek .top {
   display: flex;
   align-items: center;
