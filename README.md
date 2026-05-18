@@ -91,13 +91,6 @@ semka_html6sem/
 │   ├── .env.development        # VITE_USE_MOCK=false, API URL
 │   └── Dockerfile
 │
-├── docs/                       # документация курсовой
-│   ├── instrukcia.md           # подробный запуск и API
-│   ├── er-diagram.md
-│   ├── openapi.yaml
-│   ├── scenarios.md
-│   └── …
-│
 ├── docker-compose.yml          # postgres, redis, backend, frontend
 ├── .github/workflows/ci.yml    # сборка backend + frontend
 └── README.md                   # этот файл
@@ -122,9 +115,9 @@ semka_html6sem/
 
 ### Проектирование
 
-*   ER-диаграмма и описание сущностей (`docs/er-diagram.md`).
-*   Сценарии использования, акторы (`docs/use-case-actors.md`, `docs/scenarios.md`).
-*   OpenAPI-черновик (`docs/openapi.yaml`).
+*   ER-диаграмма и описание сущностей
+*   Сценарии использования, акторы 
+*   OpenAPI-черновик 
 
 ### Backend
 
