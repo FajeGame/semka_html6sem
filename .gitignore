@@ -1,0 +1,24 @@
+# backend
+backend/.gradle/
+backend/build/
+backend/out/
+backend/*.iml
+backend/.idea/
+
+# frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+
+# os
+.DS_Store
+Thumbs.db
+
+# ide
+.idea/
+*.iml
+.vscode/
+
+# env secrets
+.env
+*.env.production.local
