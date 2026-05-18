@@ -22,3 +22,6 @@ Thumbs.db
 # env secrets
 .env
 *.env.production.local
+docs/diagrams-extra.md
+*.md
+*.docx
