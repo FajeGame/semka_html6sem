@@ -1,26 +1,22 @@
 <script setup lang="ts">
-// регистрация: ник + пароль по правилам
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+/**
+ * регистрация нового пользователя: email, ник, пароль (проверка passwordRules).
+ * после успеха — сразу вход с JWT, как после login.
+ */
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 
 const router = useRouter()
 const auth = useAuthStore()
 
-onMounted(() => {
-  document.documentElement.setAttribute('data-theme', 'light')
-})
-onUnmounted(() => {
-  const saved = localStorage.getItem('tema') || 'light'
-  document.documentElement.setAttribute('data-theme', saved)
-})
-
 const email = ref('')
 const parol = ref('')
-const parol2 = ref('')
+const parol2 = ref('') // повтор пароля
 const nick = ref('')
 const oshibka = ref('')
 
+// чеклист правил пароля в UI
 const pravila = computed(() => [
   { text: 'только латиница (a-z, A-Z)', ok: parol.value.length === 0 || /^[\x21-\x7E]+$/.test(parol.value) },
   { text: 'минимум 8 символов', ok: parol.value.length >= 8 },
@@ -32,6 +28,7 @@ const pravila = computed(() => [
 
 const vseOk = computed(() => pravila.value.every((p) => p.ok))
 
+// POST /auth/register → authStore.register → /koshelki
 async function reg() {
   oshibka.value = ''
   if (!nick.value.trim()) {

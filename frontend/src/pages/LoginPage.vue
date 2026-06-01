@@ -1,6 +1,9 @@
 <script setup lang="ts">
-// страница входа
-import { onMounted, onUnmounted, ref } from 'vue'
+/**
+ * страница входа: email + пароль → authStore.login → редирект на /koshelki.
+ * демо: papa@test.ru / mama@test.ru, пароль password.
+ */
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { soobshenieOshibki } from '@/utils/apiError'
@@ -8,15 +11,6 @@ import axios from 'axios'
 
 const router = useRouter()
 const auth = useAuthStore()
-
-// на входе всегда светлая тема, без переключателя
-onMounted(() => {
-  document.documentElement.setAttribute('data-theme', 'light')
-})
-onUnmounted(() => {
-  const saved = localStorage.getItem('tema') || 'light'
-  document.documentElement.setAttribute('data-theme', saved)
-})
 
 const email = ref('')
 const parol = ref('')

@@ -1,5 +1,12 @@
 <script setup lang="ts">
-// страница одного кошелька: баланс, операции, бюджет, отчёт
+/**
+ * страница одного кошелька (/koshelek/:id) — основной экран приложения.
+ *
+ * вкладки/блоки: баланс, список операций, добавление дохода/расхода, split,
+ * бюджет месяца (если владелец или canSeeBudget), отчёт за период,
+ * автоплатежи (только владелец), панель участников (OwnerPanel).
+ * владелец может удалить кошелёк; участник — выйти (leave).
+ */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -30,7 +37,6 @@ import { tekushiyPeriod } from '@/utils/monthPeriod'
 import { useAuthStore } from '@/stores/authStore'
 import OwnerPanel from '@/components/wallet/OwnerPanel.vue'
 import CategorySvg from '@/components/icons/CategorySvg.vue'
-import ThemeToggle from '@/components/ThemeToggle.vue'
 import {
   dataOperMax,
   dataOperMin,
@@ -138,6 +144,7 @@ function raschetDoley(): { userId: number; shareAmount: number }[] {
   }))
 }
 
+// выбор участников для split-чека
 function toggleUchastnik(userId: number) {
   if (vybrUchast.value.includes(userId)) {
     vybrUchast.value = vybrUchast.value.filter((x) => x !== userId)
@@ -298,6 +305,7 @@ async function podtverditUdalit(id: number, authorNick: string, e: Event) {
   await zagruzit()
 }
 
+// DELETE /wallets/{id} — только владелец
 async function udalitKoshelek() {
   oshibkaKoshelek.value = ''
   const name = koshelek.value?.name || 'кошелёк'
@@ -310,6 +318,7 @@ async function udalitKoshelek() {
   }
 }
 
+// POST /wallets/{id}/leave — участник
 async function vyitiIzKoshelka() {
   oshibkaKoshelek.value = ''
   const name = koshelek.value?.name || 'кошелёк'
@@ -338,11 +347,10 @@ onUnmounted(() => {
 
 <template>
   <div class="page koshelek">
-    <!-- шапка: назад, название, тема, настройки -->
+    <!-- шапка: назад, название, настройки -->
     <header class="top">
       <router-link to="/koshelki" class="back">←</router-link>
       <h1>{{ koshelek?.name || '...' }}</h1>
-      <ThemeToggle />
       <button
         type="button"
         class="gear"
@@ -761,15 +769,8 @@ onUnmounted(() => {
   border-color: var(--color-kat-active);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-mint) 55%, transparent);
   transform: scale(1.04);
-}
-[data-theme='light'] .kat-btn.active {
   filter: none;
   color: var(--color-kat-icon);
-}
-[data-theme='dark'] .kat-btn.active {
-  background: var(--color-mint);
-  color: var(--color-base);
-  filter: none;
 }
 .fields label:not(.chk-row) {
   display: block;

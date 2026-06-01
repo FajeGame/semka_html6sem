@@ -8,6 +8,10 @@ import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 
+/**
+ * servlet-фильтр: на каждый запрос читает заголовок Authorization: Bearer …
+ * если токен валиден — в SecurityContext кладётся AppUserDetails для @AuthenticationPrincipal.
+ */
 @Component
 class JwtAuthFilter(
     private val jwtService: JwtService,
@@ -20,6 +24,7 @@ class JwtAuthFilter(
         filterChain: FilterChain,
     ) {
         val header = request.getHeader("Authorization")
+        // есть Bearer-токен — попробовать авторизовать
         if (header != null && header.startsWith("Bearer ")) {
             try {
                 val userId = jwtService.parseUserId(header.removePrefix("Bearer ").trim())
@@ -27,6 +32,7 @@ class JwtAuthFilter(
                 val auth = UsernamePasswordAuthenticationToken(user, null, user.authorities)
                 SecurityContextHolder.getContext().authentication = auth
             } catch (_: Exception) {
+                // битый токен — как гость; защищённые эндпоинты вернут 401
                 SecurityContextHolder.clearContext()
             }
         }

@@ -1,5 +1,10 @@
 package ru.semka
 
+/**
+ * unit-тест WalletAccessService с Mockito (без Spring context).
+ * проверка requireOwner и запрета для обычного участника.
+ */
+
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test

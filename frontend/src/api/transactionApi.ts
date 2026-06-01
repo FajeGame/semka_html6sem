@@ -1,20 +1,25 @@
-// API операций: список, создание, изменение, удаление, split
+/**
+ * обёртки над REST /transactions — доходы, расходы, split.
+ */
 import http, { useMock } from './http'
 import { mockDb } from './mockDb'
 import type { Operaciya, TipOper } from '@/types/models'
 
+/** GET /transactions?walletId&tip */
 export async function apiListOperacii(walletId: number, tip?: TipOper): Promise<Operaciya[]> {
   if (useMock) return mockDb.listOperacii(walletId, tip)
   const { data } = await http.get<Operaciya[]>('/transactions', { params: { walletId, tip } })
   return data
 }
 
+/** GET /transactions/{id} */
 export async function apiGetOperaciya(id: number): Promise<Operaciya> {
   if (useMock) return mockDb.getOperaciya(id)
   const { data } = await http.get<Operaciya>(`/transactions/${id}`)
   return data
 }
 
+/** POST /transactions */
 export async function apiCreateOperaciya(body: {
   walletId: number
   categoryId: number
@@ -28,6 +33,7 @@ export async function apiCreateOperaciya(body: {
   return data
 }
 
+/** PUT /transactions/{id} */
 export async function apiUpdateOperaciya(
   id: number,
   body: {
@@ -43,11 +49,13 @@ export async function apiUpdateOperaciya(
   return data
 }
 
+/** DELETE /transactions/{id} */
 export async function apiDeleteOperaciya(id: number): Promise<void> {
   if (useMock) return mockDb.delOperaciya(id)
   await http.delete(`/transactions/${id}`)
 }
 
+/** POST /transactions/split — разделить чек */
 export async function apiSplit(body: {
   walletId: number
   categoryId: number

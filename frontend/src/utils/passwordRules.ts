@@ -1,9 +1,14 @@
+/**
+ * проверка сложности пароля на странице регистрации.
+ * backend дополнительно проверяет только @NotBlank — правила в основном на UI.
+ */
+
 export interface ProverkaParolya {
-  ok: boolean
-  oshibki: string[]
+  ok: boolean // все правила выполнены
+  oshibki: string[] // список невыполненных правил для показа пользователю
 }
 
-// пароль только латиницей (ASCII печатные символы)
+// только ASCII-печатные символы (латиница, цифры, знаки)
 const LATIN = /^[\x21-\x7E]+$/
 
 export function proveritParol(parol: string): ProverkaParolya {

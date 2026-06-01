@@ -1,4 +1,13 @@
-// маршруты и защита страниц (needsAuth)
+/**
+ * маршруты Vue Router.
+ *
+ * /koshelki — главная: список кошельков
+ * /koshelek/:id — один кошелёк (операции, бюджет, отчёт)
+ * /login, /register — без авторизации
+ *
+ * meta.needsAuth — guard: без jwt_token редирект на login
+ * если уже залогинен и открыли login/register — редирект на /koshelki
+ */
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -23,7 +32,6 @@ const router = createRouter({
   ],
 })
 
-// редирект на login, если нет токена
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (to.meta.needsAuth && !auth.isLogin) {
@@ -32,6 +40,7 @@ router.beforeEach(async (to) => {
   if ((to.path === '/login' || to.path === '/register') && auth.isLogin) {
     return '/koshelki'
   }
+  // токен есть, но user ещё не подгружен — запрос GET /auth/me
   if (auth.isLogin && !auth.user) {
     try {
       await auth.loadMe()

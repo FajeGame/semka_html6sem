@@ -10,29 +10,41 @@ import java.math.BigDecimal
 import java.time.LocalDate
 import java.util.Optional
 
+/**
+ * Spring Data JPA: интерфейсы доступа к PostgreSQL.
+ * Spring сам генерирует реализации по именам методов; агрегаты — через @Query JPQL.
+ */
+
+// ——— пользователи ———
 interface UserRepository : JpaRepository<UserEntity, Long> {
-    fun findByEmail(email: String): Optional<UserEntity>
-    fun findByNick(nick: String): Optional<UserEntity>
-    fun existsByEmail(email: String): Boolean
+    fun findByEmail(email: String): Optional<UserEntity> // вход по email
+    fun findByNick(nick: String): Optional<UserEntity> // приглашение в кошелёк по нику
+    fun existsByEmail(email: String): Boolean // проверка при регистрации
     fun existsByNick(nick: String): Boolean
 }
 
+// ——— кошельки ———
 interface WalletRepository : JpaRepository<WalletEntity, Long> {
-    fun findByOwnerId(ownerId: Long): List<WalletEntity>
+    fun findByOwnerId(ownerId: Long): List<WalletEntity> // все кошельки, где user — owner_id
 }
 
+// ——— участники кошелька ———
 interface WalletMemberRepository : JpaRepository<WalletMemberEntity, Long> {
-    fun findByWalletIdAndUserId(walletId: Long, userId: Long): Optional<WalletMemberEntity>
-    fun findByWalletId(walletId: Long): List<WalletMemberEntity>
-    fun findByUserId(userId: Long): List<WalletMemberEntity>
+    fun findByWalletIdAndUserId(walletId: Long, userId: Long): Optional<WalletMemberEntity> // проверка доступа
+    fun findByWalletId(walletId: Long): List<WalletMemberEntity> // список участников
+    fun findByUserId(userId: Long): List<WalletMemberEntity> // все кошельки пользователя
 }
 
+// ——— категории ———
 interface CategoryRepository : JpaRepository<CategoryEntity, Long> {
     fun findByWalletId(walletId: Long): List<CategoryEntity>
-    fun findByWalletIdAndTip(walletId: Long, tip: OperationType): List<CategoryEntity>
+    fun findByWalletIdAndTip(walletId: Long, tip: OperationType): List<CategoryEntity> // фильтр INCOME/EXPENSE
 }
 
+// ——— операции ———
 interface TransactionRepository : JpaRepository<TransactionEntity, Long> {
+
+    // одна операция с подгрузкой category, author, splits (без N+1)
     @EntityGraph(attributePaths = ["category", "author", "splits", "splits.user"])
     fun findDetailedById(id: Long): Optional<TransactionEntity>
 
@@ -44,14 +56,15 @@ interface TransactionRepository : JpaRepository<TransactionEntity, Long> {
         walletId: Long,
         from: LocalDate,
         to: LocalDate,
-    ): List<TransactionEntity>
+    ): List<TransactionEntity> // для отчётов за период
 
     @EntityGraph(attributePaths = ["category", "author", "splits", "splits.user"])
     fun findByWalletIdAndTypeOrderByTransactionDateDescCreatedAtDesc(
         walletId: Long,
         type: OperationType,
-    ): List<TransactionEntity>
+    ): List<TransactionEntity> // фильтр доход/расход в списке
 
+    // сумма INCOME или EXPENSE по всему кошельку (баланс)
     @Query(
         """
         SELECT COALESCE(SUM(t.amount), 0) FROM TransactionEntity t
@@ -63,6 +76,7 @@ interface TransactionRepository : JpaRepository<TransactionEntity, Long> {
         @Param("type") type: OperationType,
     ): BigDecimal
 
+    // потрачено по одной категории за период (бюджет по категории)
     @Query(
         """
         SELECT COALESCE(SUM(t.amount), 0) FROM TransactionEntity t
@@ -77,6 +91,7 @@ interface TransactionRepository : JpaRepository<TransactionEntity, Long> {
         @Param("to") to: LocalDate,
     ): BigDecimal
 
+    // все расходы кошелька за период (общий бюджет)
     @Query(
         """
         SELECT COALESCE(SUM(t.amount), 0) FROM TransactionEntity t
@@ -90,27 +105,29 @@ interface TransactionRepository : JpaRepository<TransactionEntity, Long> {
         @Param("to") to: LocalDate,
     ): BigDecimal
 
-    fun countByCategoryId(categoryId: Long): Long
-
-    fun countByWalletId(walletId: Long): Long
+    fun countByCategoryId(categoryId: Long): Long // можно ли удалить категорию
+    fun countByWalletId(walletId: Long): Long // пустой ли кошелёк (cleanup)
 }
 
+// ——— доли split ———
 interface SplitExpenseRepository : JpaRepository<SplitExpenseEntity, Long> {
     fun findByTransactionId(transactionId: Long): List<SplitExpenseEntity>
-    fun deleteByTransactionId(transactionId: Long)
+    fun deleteByTransactionId(transactionId: Long) // при удалении операции
     fun existsByTransactionId(transactionId: Long): Boolean
 }
 
+// ——— бюджеты ———
 interface BudgetRepository : JpaRepository<BudgetEntity, Long> {
-    fun findByWalletIdAndPeriodStart(walletId: Long, periodStart: LocalDate): List<BudgetEntity>
+    fun findByWalletIdAndPeriodStart(walletId: Long, periodStart: LocalDate): List<BudgetEntity> // лимиты месяца
     fun findByWalletIdAndCategoryIdAndPeriodStart(
         walletId: Long,
         categoryId: Long?,
         periodStart: LocalDate,
-    ): Optional<BudgetEntity>
+    ): Optional<BudgetEntity> // upsert: общий (categoryId=null) или по категории
 }
 
+// ——— автоплатежи ———
 interface RecurringRuleRepository : JpaRepository<RecurringRuleEntity, Long> {
     fun findByWalletId(walletId: Long): List<RecurringRuleEntity>
-    fun findByActiveTrueAndNextRunDateLessThanEqual(date: LocalDate): List<RecurringRuleEntity>
+    fun findByActiveTrueAndNextRunDateLessThanEqual(date: LocalDate): List<RecurringRuleEntity> // для планировщика
 }

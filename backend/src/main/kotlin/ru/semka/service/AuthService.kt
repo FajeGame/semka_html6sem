@@ -16,12 +16,18 @@ import ru.semka.repository.UserRepository
 import ru.semka.security.AppUserDetails
 import ru.semka.security.JwtService
 
+/**
+ * авторизация: регистрация, вход, профиль, удаление аккаунта.
+ * пароль в БД только bcrypt; клиент хранит JWT в localStorage.
+ */
 @Service
 class AuthService(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
     private val jwtService: JwtService,
 ) {
+
+    // POST /auth/register
     @Transactional
     fun register(req: RegisterRequest): LoginResponse {
         if (userRepository.existsByEmail(req.email)) {
@@ -44,6 +50,7 @@ class AuthService(
         return tokenFor(user)
     }
 
+    // POST /auth/login
     fun login(req: LoginRequest): LoginResponse {
         val user = userRepository.findByEmail(req.email.trim().lowercase())
             .orElseThrow { ApiException("AUTH_ERROR", "неверный email или пароль", HttpStatus.UNAUTHORIZED) }
@@ -53,8 +60,10 @@ class AuthService(
         return tokenFor(user)
     }
 
+    // GET /auth/me
     fun me(user: AppUserDetails): UserDto = UserDto(user.id, user.email, user.nick, user.role)
 
+    // DELETE /auth/me — каскад по FK удалит участия в кошельках (миграция V6)
     @Transactional
     fun deleteAccount(req: DeleteAccountRequest, user: AppUserDetails) {
         if (user.nick in listOf("papa", "mama")) {
@@ -68,6 +77,7 @@ class AuthService(
         userRepository.delete(entity)
     }
 
+    // собрать LoginResponse с новым JWT
     private fun tokenFor(user: UserEntity): LoginResponse {
         val token = jwtService.generateToken(user.id!!, user.email, user.role.name)
         return LoginResponse(token, user.toDto())

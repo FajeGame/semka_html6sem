@@ -17,12 +17,23 @@ import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 import ru.semka.security.JwtAuthFilter
 
+/**
+ * настройка Spring Security для REST API.
+ *
+ * - без сессий (STATELESS): каждый запрос с JWT в заголовке Authorization
+ * - без CSRF (типично для SPA + JWT)
+ * - /auth/login и /auth/register открыты без токена
+ * - всё остальное требует аутентификации
+ * - CORS разрешён для localhost (Vue dev-server на 5173 и т.п.)
+ * - JwtAuthFilter вставляется перед стандартным UsernamePasswordAuthenticationFilter
+ */
 @Configuration
 @EnableMethodSecurity
 class SecurityConfig(
     private val jwtAuthFilter: JwtAuthFilter,
 ) {
 
+    // хэширование паролей при регистрации
     @Bean
     fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
 
@@ -33,9 +44,9 @@ class SecurityConfig(
     @Bean
     fun filterChain(http: HttpSecurity): SecurityFilterChain {
         http
-            .csrf { it.disable() }
+            .csrf { it.disable() } // REST + JWT без CSRF
             .cors { }
-            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) } // без серверных сессий
             .authorizeHttpRequests {
                 it.requestMatchers(
                     "/auth/login",
@@ -43,9 +54,9 @@ class SecurityConfig(
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
                     "/actuator/health",
-                ).permitAll()
+                ).permitAll() // вход и swagger без токена
                 it.requestMatchers("/actuator/**").hasRole("ADMIN")
-                it.anyRequest().authenticated()
+                it.anyRequest().authenticated() // все API — с JWT
             }
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
         return http.build()

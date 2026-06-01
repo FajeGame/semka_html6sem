@@ -5,10 +5,18 @@ import ru.semka.dto.*
 import java.math.BigDecimal
 import java.math.RoundingMode
 
+/**
+ * extension-функции: Entity → DTO для ответов API.
+ * вызываются из сервисов перед return; не содержат бизнес-правил.
+ */
+
+// UserEntity → UserDto
 fun UserEntity.toDto() = UserDto(id!!, email, nick, role)
 
+// CategoryEntity → CategoryDto
 fun CategoryEntity.toDto() = CategoryDto(id!!, walletId, name, tip, iconKey, colorBg)
 
+// TransactionEntity → TransactionDto (нужны загруженные category, author, splits)
 fun TransactionEntity.toDto() = TransactionDto(
     id = id!!,
     walletId = walletId,
@@ -25,8 +33,10 @@ fun TransactionEntity.toDto() = TransactionDto(
     },
 )
 
+// WalletMemberEntity + nick → MemberDto
 fun WalletMemberEntity.toDto(nick: String) = MemberDto(id!!, userId, nick, memberRole, canSeeBudget)
 
+// RecurringRuleEntity → RecurringRuleDto
 fun RecurringRuleEntity.toDto() = RecurringRuleDto(
     id = id!!,
     walletId = walletId,
@@ -39,4 +49,5 @@ fun RecurringRuleEntity.toDto() = RecurringRuleDto(
     comment = comment,
 )
 
+// округление денег до 2 знаков
 fun BigDecimal.money(): BigDecimal = setScale(2, RoundingMode.HALF_UP)

@@ -1,5 +1,9 @@
 package ru.semka
 
+/**
+ * unit-тест округления денег BigDecimal.money() до 2 знаков.
+ */
+
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import ru.semka.service.money

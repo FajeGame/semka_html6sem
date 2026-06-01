@@ -11,7 +11,9 @@ import ru.semka.repository.UserRepository
 import ru.semka.repository.WalletMemberRepository
 import ru.semka.security.AppUserDetails
 import java.math.BigDecimal
+import java.time.LocalDate
 
+/** отчёты за диапазон дат: сводка по периоду и расходы по участникам (author_id). */
 @Service
 class ReportService(
     private val transactionRepository: TransactionRepository,
@@ -20,6 +22,8 @@ class ReportService(
     private val userRepository: UserRepository,
     private val access: WalletAccessService,
 ) {
+
+    // GET /reports/period — доходы, расходы, по категориям
     fun periodReport(walletId: Long, from: java.time.LocalDate, to: java.time.LocalDate, user: AppUserDetails): PeriodReportDto {
         access.requireMember(walletId, user)
         val txs = transactionRepository
@@ -38,6 +42,7 @@ class ReportService(
         return PeriodReportDto(walletId, from, to, income, expense, byCat)
     }
 
+    // GET /reports/by-member — split учитывается по долям, иначе author_id
     fun expensesByMember(
         walletId: Long,
         from: java.time.LocalDate,

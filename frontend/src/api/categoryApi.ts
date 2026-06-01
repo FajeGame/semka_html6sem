@@ -1,4 +1,6 @@
-// API категорий доходов и расходов
+/**
+ * обёртки над REST /categories.
+ */
 import http, { useMock } from './http'
 import { mockDb } from './mockDb'
 import type { Kategoriya, NovayaKategoriya, TipOper } from '@/types/models'

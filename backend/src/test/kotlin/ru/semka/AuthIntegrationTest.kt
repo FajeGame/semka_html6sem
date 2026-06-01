@@ -1,5 +1,10 @@
 package ru.semka
 
+/**
+ * интеграционный тест: login демо-пользователя papa и GET /auth/me с JWT.
+ * профиль test — in-memory H2, без Docker.
+ */
+
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc

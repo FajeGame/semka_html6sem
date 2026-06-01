@@ -1,29 +1,46 @@
 <script setup lang="ts">
-// список кошельков пользователя и создание нового
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+/**
+ * главная страница после входа: список кошельков пользователя.
+ *
+ * показывает карточки кошельков, кнопку «создать», выход из аккаунта.
+ * на карточке — остаток бюджета месяца только если canSeeBudget (иначе блок скрыт).
+ * внизу — удаление аккаунта с подтверждением пароля (DELETE /auth/me).
+ */
+import { onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { apiCreateKoshelek, apiListKoshelki } from '@/api/walletApi'
 import { apiDeleteAccount } from '@/api/authApi'
 import type { Koshelek } from '@/types/models'
 import { useAuthStore } from '@/stores/authStore'
-import ThemeToggle from '@/components/ThemeToggle.vue'
 import { soobshenieOshibki } from '@/utils/apiError'
 
+const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-const spisok = ref<Koshelek[]>([])
-const imyaNew = ref('')
-const sozdaem = ref(false)
-const parolUdalit = ref('')
-const udalyaemAkkaunt = ref(false)
 
+const spisok = ref<Koshelek[]>([]) // список кошельков с сервера
+const imyaNew = ref('') // имя для формы «создать кошелёк»
+const sozdaem = ref(false) // индикатор загрузки при создании
+const parolUdalit = ref('') // пароль для подтверждения удаления аккаунта
+const udalyaemAkkaunt = ref(false) // идёт запрос DELETE /auth/me
+
+// загрузить GET /wallets
 async function zagruzit() {
-  spisok.value = await apiListKoshelki()
+  oshibkaSpiska.value = ''
+  try {
+    spisok.value = await apiListKoshelki()
+  } catch (e: unknown) {
+    oshibkaSpiska.value = soobshenieOshibki(e)
+    spisok.value = []
+  }
 }
 
-const oshibka = ref('')
-const oshibkaAkkaunt = ref('')
+const oshibka = ref('') // текст ошибки создания кошелька
+const oshibkaSpiska = ref('') // ошибка загрузки GET /wallets
+const oshibkaAkkaunt = ref('') // текст ошибки удаления аккаунта
+const sozdanUspeh = ref(false) // краткое сообщение после успешного создания
 
+// POST /wallets → остаёмся на странице, обновляем список
 async function sozdat() {
   const name = imyaNew.value.trim()
   if (!name) {
@@ -32,10 +49,18 @@ async function sozdat() {
   }
   sozdaem.value = true
   oshibka.value = ''
+  oshibkaSpiska.value = ''
+  sozdanUspeh.value = false
   try {
     await apiCreateKoshelek(name)
     imyaNew.value = ''
     await zagruzit()
+    if (!spisok.value.some((k) => k.name === name)) {
+      oshibka.value =
+        'кошелёк не появился в списке. Перезапустите backend (./gradlew bootRun) — возможно запущена старая версия.'
+      return
+    }
+    sozdanUspeh.value = true
   } catch (e: unknown) {
     oshibka.value = soobshenieOshibki(e)
   } finally {
@@ -43,6 +68,7 @@ async function sozdat() {
   }
 }
 
+// DELETE /auth/me с подтверждением пароля
 async function udalitAkkaunt() {
   oshibkaAkkaunt.value = ''
   if (!parolUdalit.value) {
@@ -69,23 +95,32 @@ async function udalitAkkaunt() {
 }
 
 onMounted(zagruzit)
+
+// при возврате со страницы кошелька — обновить список с сервера
+watch(
+  () => route.name,
+  (name) => {
+    if (name === 'koshelki') void zagruzit()
+  },
+)
 </script>
 
 <template>
   <div class="page">
-    <!-- шапка: ник, тема, выход -->
+    <!-- шапка: ник, выход -->
     <header class="head">
       <div>
         <h1>Кошельки</h1>
         <p class="sub">@{{ auth.user?.nick }}</p>
       </div>
-      <ThemeToggle />
       <button type="button" class="btn-ghost" @click="auth.logout(); $router.push('/login')">
         выйти
       </button>
     </header>
 
-    <p v-if="!spisok.length" class="empty card">
+    <p v-if="oshibkaSpiska" class="err card">{{ oshibkaSpiska }}</p>
+
+    <p v-else-if="!spisok.length" class="empty card">
       пока нет кошельков — создайте первый ниже
     </p>
 
@@ -115,9 +150,10 @@ onMounted(zagruzit)
       <h3>Новый кошелёк</h3>
       <input v-model="imyaNew" maxlength="50" placeholder="название, напр. Семья" />
       <button type="button" class="btn-primary" :disabled="sozdaem" @click="sozdat">
-        создать
+        {{ sozdaem ? 'создаём…' : 'создать' }}
       </button>
       <p v-if="oshibka" class="err">{{ oshibka }}</p>
+      <p v-else-if="sozdanUspeh" class="ok-hint">кошелёк создан и добавлен в список</p>
     </section>
 
     <section class="card account-delete">
@@ -233,6 +269,11 @@ onMounted(zagruzit)
 }
 .err {
   color: var(--color-danger);
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
+.ok-hint {
+  color: var(--color-muted);
   font-size: 0.85rem;
   margin-top: 8px;
 }

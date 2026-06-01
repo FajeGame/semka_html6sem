@@ -1,9 +1,13 @@
 <script setup lang="ts">
-// SVG-иконки категорий по ключу (cart, car, home, …)
+/**
+ * отрисовка SVG-иконки категории по строковому ключу (cart, car, home, …).
+ * один компонент вместо 20 отдельных — ключ приходит из category.iconKey.
+ */
 defineProps<{ iconKey: string }>()
 </script>
 
 <template>
+  <!-- ветвление по iconKey: каждая ветка — свой SVG -->
   <svg v-if="iconKey === 'cart'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <circle cx="9" cy="20" r="1" /><circle cx="17" cy="20" r="1" />
     <path d="M1 1h4l2.6 13h9.8l2-8H6" />
@@ -65,6 +69,7 @@ defineProps<{ iconKey: string }>()
   <svg v-else-if="iconKey === 'money'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2" />
   </svg>
+  <!-- fallback: плюс -->
   <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <path d="M12 5v14M5 12h14" />
   </svg>

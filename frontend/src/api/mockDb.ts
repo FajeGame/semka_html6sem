@@ -1,4 +1,8 @@
-// in-memory «база» для разработки без backend (VITE_USE_MOCK=true)
+/**
+ * in-memory «база» для режима без Spring (VITE_USE_MOCK=true в .env).
+ * те же сценарии, что и backend: papa/mama, кошелёк «Семья», категории, операции.
+ * данные живут только до перезагрузки страницы — для демо и вёрстки UI.
+ */
 
 import type {
   Balans,
@@ -24,11 +28,11 @@ import {
 } from '@/utils/inputLimits'
 import { tekushiyPeriod } from '@/utils/monthPeriod'
 
-// отдельные счётчики — id кошелька не прыгает на 101
-let seqWallet = 1
+// счётчики auto-increment id (отдельно по типам сущностей)
+let seqWallet = 1 // кошельки
 let seqUser = 2
 let seqMember = 2
-let seqCategory = 8
+let seqCategory = 8 // после seed демо-категорий
 let seqOper = 2
 let seqBudget = 2
 let seqPravilo = 1
@@ -63,8 +67,23 @@ function nidOther() {
 const userPapa: UserMe = { id: 1, email: 'papa@test.ru', nick: 'papa', role: 'USER' }
 const userMama: UserMe = { id: 2, email: 'mama@test.ru', nick: 'mama', role: 'USER' }
 
-/** Общий список регистраций для всех вкладок (mock без backend). */
+/** ключ localStorage: зарегистрированные в mock пользователи (кроме papa/mama) */
 const MOCK_USERS_KEY = 'semka_mock_users'
+/** кошельки и участники mock — переживают перезагрузку вкладки */
+const MOCK_DB_KEY = 'semka_mock_db_v1'
+
+type PersistedMock = {
+  koshelki: { id: number; name: string }[]
+  members: MemberRow[]
+  kategorii: Kategoriya[]
+  byudzhety: Byudzhet[]
+  operacii: Operaciya[]
+  seqWallet: number
+  seqMember: number
+  seqCategory: number
+  seqOper: number
+  seqBudget: number
+}
 
 function loadRegistered(): UserMe[] {
   try {
@@ -86,8 +105,54 @@ function allKnownUsers(): UserMe[] {
   return [...zaregistrirovannye, userPapa, userMama]
 }
 
-let curUser: UserMe | null = null
+let curUser: UserMe | null = null // кто сейчас «залогинен» в mock
 
+function restoreCurUserFromToken() {
+  const token = localStorage.getItem('jwt_token')
+  if (!token?.startsWith('mock-')) return
+  const id = Number(token.slice(5))
+  if (!Number.isFinite(id)) return
+  const u = allKnownUsers().find((x) => x.id === id)
+  if (u) curUser = { ...u }
+}
+
+function saveMockDb() {
+  const payload: PersistedMock = {
+    koshelki: [...koshelki],
+    members: [...members],
+    kategorii: [...kategorii],
+    byudzhety: [...byudzhety],
+    operacii: [...operacii],
+    seqWallet,
+    seqMember,
+    seqCategory,
+    seqOper,
+    seqBudget,
+  }
+  localStorage.setItem(MOCK_DB_KEY, JSON.stringify(payload))
+}
+
+function loadMockDb() {
+  try {
+    const raw = localStorage.getItem(MOCK_DB_KEY)
+    if (!raw) return
+    const s = JSON.parse(raw) as PersistedMock
+    koshelki.splice(0, koshelki.length, ...s.koshelki)
+    members.splice(0, members.length, ...s.members)
+    kategorii.splice(0, kategorii.length, ...s.kategorii)
+    byudzhety.splice(0, byudzhety.length, ...s.byudzhety)
+    operacii.splice(0, operacii.length, ...s.operacii)
+    seqWallet = s.seqWallet
+    seqMember = s.seqMember
+    seqCategory = s.seqCategory
+    seqOper = s.seqOper
+    seqBudget = s.seqBudget
+  } catch {
+    /* битый JSON — остаёмся на демо-данных */
+  }
+}
+
+// in-memory таблицы (аналог PostgreSQL)
 const koshelki: { id: number; name: string }[] = [{ id: 1, name: 'Семья' }]
 
 type MemberRow = Uchastnik & { walletId: number }
@@ -120,14 +185,19 @@ function obogatitSplit(o: Operaciya): Operaciya {
   }
 }
 
+// скопировать шаблоны категорий в массив kategorii
 function seedKategorii(walletId: number) {
   for (const s of [...shablonyRashod, ...shablonyDohod]) {
     kategorii.push({ id: nidCategory(), walletId, ...s })
   }
 }
 
-seedKategorii(1)
+loadMockDb()
+if (!kategorii.some((k) => k.walletId === 1)) {
+  seedKategorii(1) // демо-кошелёк «Семья»
+}
 
+// стартовые операции для демонстрации
 operacii.push(
   {
     id: 1,
@@ -313,12 +383,14 @@ export const mockDb = {
   },
 
   me(): UserMe {
+    if (!curUser) restoreCurUserFromToken()
     if (!curUser) throw new Error('нет входа')
     return curUser
   },
 
   // --- кошельки и участники ---
   listKoshelki(): Koshelek[] {
+    if (!curUser) restoreCurUserFromToken()
     if (!curUser) return []
     return walletsForUser(curUser.id).map((wid) => toKoshelek(wid, curUser!.id))
   },
@@ -477,10 +549,12 @@ export const mockDb = {
   },
 
   addKoshelek(name: string): Koshelek {
+    if (!curUser) restoreCurUserFromToken()
     if (!curUser) throw new Error('войдите')
     const id = nidWallet()
     koshelki.push({ id, name })
     seedWalletDefaults(id, curUser)
+    saveMockDb()
     return toKoshelek(id, curUser.id)
   },
 
@@ -669,6 +743,7 @@ export const mockDb = {
       pravila.length,
       ...pravila.filter((p) => p.walletId !== id),
     )
+    saveMockDb()
   },
 
   updateKategoriya(

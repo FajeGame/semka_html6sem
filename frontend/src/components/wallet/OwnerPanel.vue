@@ -1,5 +1,9 @@
 <script setup lang="ts">
-// боковое меню настроек владельца кошелька
+/**
+ * панель владельца кошелька (выезжающее меню на KoshelekPage).
+ * приглашение по нику, удаление участника, переключатель «видит бюджет»,
+ * лимиты бюджета, новые категории, автоплатежи раз в месяц.
+ */
 import { computed, ref, watch } from 'vue'
 import type { Byudzhet, Kategoriya, PraviloMesyac, TipOper, Uchastnik } from '@/types/models'
 import { apiDeleteByudzhet, apiUpsertByudzhet } from '@/api/budgetApi'
@@ -21,8 +25,9 @@ import {
 } from '@/utils/inputLimits'
 import { soobshenieOshibki } from '@/utils/apiError'
 
+// данные с родительской KoshelekPage
 const props = defineProps<{
-  open: boolean
+  open: boolean // панель открыта
   walletId: number
   uchastniki: Uchastnik[]
   kategorii: Kategoriya[]
@@ -30,7 +35,7 @@ const props = defineProps<{
   byudzhety: Byudzhet[]
 }>()
 
-const emit = defineEmits<{ close: []; refresh: [] }>()
+const emit = defineEmits<{ close: []; refresh: [] }>() // закрыть / перезагрузить кошелёк
 
 // приглашение участника
 const nickNew = ref('')
@@ -76,6 +81,7 @@ watch(obshiyBud, (b) => {
   if (props.open && b) limitObshiy.value = b.limitAmount
 })
 
+// POST /wallets/{id}/members
 async function priglasit() {
   oshibkaInvite.value = ''
   const nick = nickNew.value.trim()
@@ -93,11 +99,13 @@ async function priglasit() {
   }
 }
 
+// PATCH canSeeBudget
 async function toggleBudget(u: Uchastnik) {
   await apiSetCanSeeBudget(props.walletId, u.id, !u.canSeeBudget)
   emit('refresh')
 }
 
+// DELETE участника
 async function udalitUchastnika(u: Uchastnik) {
   if (!confirm(`Удалить @${u.nick} из кошелька?`)) return
   try {
@@ -108,6 +116,7 @@ async function udalitUchastnika(u: Uchastnik) {
   }
 }
 
+// upsert общего лимита месяца
 async function sohranitObshiy() {
   oshibkaBud.value = ''
   if (limitObshiy.value == null) {
@@ -163,6 +172,7 @@ async function udalitKatByudzhet(id: number) {
   }
 }
 
+// POST /categories
 async function addKat() {
   await apiCreateKategoriya({
     walletId: props.walletId,

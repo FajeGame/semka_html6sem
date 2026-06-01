@@ -16,6 +16,10 @@ import ru.semka.repository.WalletRepository
 import ru.semka.security.AppUserDetails
 import java.time.LocalDate
 
+/**
+ * правила «раз в месяц»: владелец задаёт категорию, сумму и день месяца.
+ * фактическое создание операций — в RecurringScheduler по cron.
+ */
 @Service
 class RecurringService(
     private val recurringRepository: RecurringRuleRepository,
@@ -25,6 +29,8 @@ class RecurringService(
     private val access: WalletAccessService,
     private val walletService: WalletService,
 ) {
+
+    // GET /recurring-rules/{id}
     fun get(ruleId: Long, walletId: Long, user: AppUserDetails): RecurringRuleDto {
         access.requireOwner(walletId, user)
         val rule = recurringRepository.findById(ruleId).orElseThrow { ApiException("NOT_FOUND", "правило не найдено") }
@@ -32,11 +38,13 @@ class RecurringService(
         return rule.toDto()
     }
 
+    // GET /recurring-rules?walletId
     fun list(walletId: Long, user: AppUserDetails): List<RecurringRuleDto> {
         access.requireOwner(walletId, user)
         return recurringRepository.findByWalletId(walletId).map { it.toDto() }
     }
 
+    // POST /recurring-rules
     @Transactional
     fun create(req: CreateRecurringRequest, user: AppUserDetails): RecurringRuleDto {
         access.requireOwner(req.walletId, user)
@@ -56,6 +64,7 @@ class RecurringService(
         return recurringRepository.findById(rule.id!!).get().toDto()
     }
 
+    // PUT /recurring-rules/{id}
     @Transactional
     fun update(ruleId: Long, req: UpdateRecurringRequest, user: AppUserDetails): RecurringRuleDto {
         access.requireOwner(req.walletId, user)
@@ -72,6 +81,7 @@ class RecurringService(
         return recurringRepository.save(rule).toDto()
     }
 
+    // DELETE /recurring-rules/{id}
     @Transactional
     fun delete(ruleId: Long, walletId: Long, user: AppUserDetails) {
         access.requireOwner(walletId, user)
@@ -80,6 +90,7 @@ class RecurringService(
         recurringRepository.delete(rule)
     }
 
+    // вызывается RecurringScheduler: создать EXPENSE и сдвинуть nextRunDate на месяц
     @Transactional
     fun runDueRules(today: LocalDate = LocalDate.now()) {
         val rules = recurringRepository.findByActiveTrueAndNextRunDateLessThanEqual(today)

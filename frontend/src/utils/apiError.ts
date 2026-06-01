@@ -1,6 +1,9 @@
 import axios from 'axios'
 
-/** Текст ошибки из axios (backend ErrorDto) или Error. */
+/**
+ * достать понятный текст ошибки для показа пользователю.
+ * backend отдаёт { message } в ErrorDto; иначе — стандартные фразы по коду 403/404.
+ */
 export function soobshenieOshibki(e: unknown): string {
   if (axios.isAxiosError(e)) {
     const data = e.response?.data as { message?: string } | undefined

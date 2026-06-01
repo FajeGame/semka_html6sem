@@ -1,4 +1,6 @@
-// API автоплатежей (RecurringRule)
+/**
+ * обёртки над REST /recurring-rules — автоплатежи раз в месяц.
+ */
 import http, { useMock } from './http'
 import { mockDb } from './mockDb'
 import type { PraviloMesyac } from '@/types/models'

@@ -16,6 +16,11 @@ import ru.semka.repository.TransactionRepository
 import ru.semka.security.AppUserDetails
 import java.math.BigDecimal
 
+/**
+ * доходы и расходы кошелька + split (разделить чек между участниками).
+ * при создании/изменении/удалении сбрасывается кэш баланса (walletService.evictBalance).
+ * участник может править только свои операции; владелец — любые в этом кошельке.
+ */
 @Service
 class TransactionService(
     private val transactionRepository: TransactionRepository,
@@ -25,6 +30,8 @@ class TransactionService(
     private val walletService: WalletService,
     private val auditAsync: AuditAsyncService,
 ) {
+
+    // GET /transactions/{id}
     fun get(id: Long, user: AppUserDetails): TransactionDto {
         val tx = transactionRepository.findDetailedById(id)
             .orElseThrow { ApiException("NOT_FOUND", "операция не найдена") }
@@ -32,6 +39,7 @@ class TransactionService(
         return tx.toDto()
     }
 
+    // GET /transactions?walletId&tip
     fun list(walletId: Long, tip: OperationType?, user: AppUserDetails): List<TransactionDto> {
         access.requireMember(walletId, user)
         val list = if (tip != null) {
@@ -42,6 +50,7 @@ class TransactionService(
         return list.map { it.toDto() }
     }
 
+    // POST /transactions — новая операция, author = текущий user
     @Transactional
     fun create(req: CreateTransactionRequest, user: AppUserDetails): TransactionDto {
         access.requireMember(req.walletId, user)
@@ -61,6 +70,7 @@ class TransactionService(
         return transactionRepository.findById(tx.id!!).get().toDto()
     }
 
+    // POST /transactions/split — один EXPENSE + строки в split_expenses
     @Transactional
     fun split(req: SplitRequest, user: AppUserDetails) {
         access.requireMember(req.walletId, user)
@@ -93,6 +103,7 @@ class TransactionService(
         auditAsync.logSplitCreated(tx.id!!, user.nick)
     }
 
+    // PUT /transactions/{id} — участник только свои; split редактировать нельзя
     @Transactional
     fun update(id: Long, req: UpdateTransactionRequest, user: AppUserDetails): TransactionDto {
         val tx = transactionRepository.findById(id).orElseThrow { ApiException("NOT_FOUND", "операция не найдена") }
@@ -114,6 +125,7 @@ class TransactionService(
         return transactionRepository.findDetailedById(id).get().toDto()
     }
 
+    // DELETE /transactions/{id}
     @Transactional
     fun delete(id: Long, user: AppUserDetails) {
         val tx = transactionRepository.findById(id).orElseThrow { ApiException("NOT_FOUND", "операция не найдена") }
@@ -126,6 +138,7 @@ class TransactionService(
         walletService.evictBalance(tx.walletId)
     }
 
+    // категория должна быть из того же кошелька и того же типа (INCOME/EXPENSE)
     private fun validateCategory(walletId: Long, categoryId: Long, type: OperationType) {
         val cat = categoryRepository.findById(categoryId).orElseThrow { ApiException("NOT_FOUND", "категория не найдена") }
         if (cat.walletId != walletId || cat.tip != type) {

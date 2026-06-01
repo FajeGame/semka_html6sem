@@ -13,6 +13,11 @@ import ru.semka.repository.TransactionRepository
 import ru.semka.security.AppUserDetails
 import java.math.BigDecimal
 
+/**
+ * лимиты на текущий месяц: общий по кошельку (categoryId = null) и по категориям.
+ * в DTO отдаётся spentAmount — сколько уже потрачено за период.
+ * участник видит бюджеты только при canSeeBudget или если он владелец.
+ */
 @Service
 class BudgetService(
     private val budgetRepository: BudgetRepository,
@@ -21,6 +26,8 @@ class BudgetService(
     private val memberRepository: ru.semka.repository.WalletMemberRepository,
     private val access: WalletAccessService,
 ) {
+
+    // GET /budgets?walletId — пустой список, если участник без canSeeBudget
     fun list(walletId: Long, user: AppUserDetails): List<BudgetDto> {
         val member = memberRepository.findByWalletIdAndUserId(walletId, user.id)
             .orElseThrow { ApiException("FORBIDDEN", "нет доступа") }
@@ -31,6 +38,7 @@ class BudgetService(
         return budgetRepository.findByWalletIdAndPeriodStart(walletId, from).map { enrich(it) }
     }
 
+    // POST/PUT /budgets — создать или обновить лимит на текущий месяц
     @Transactional
     fun upsert(req: UpsertBudgetRequest, user: AppUserDetails): BudgetDto {
         access.requireOwner(req.walletId, user)
@@ -58,6 +66,7 @@ class BudgetService(
         return enrich(entity)
     }
 
+    // DELETE /budgets/{id} — общий бюджет (categoryId=null) удалить нельзя
     @Transactional
     fun delete(walletId: Long, budgetId: Long, user: AppUserDetails) {
         access.requireOwner(walletId, user)
@@ -67,6 +76,7 @@ class BudgetService(
         budgetRepository.delete(b)
     }
 
+    // добавить spent и remaining к записи бюджета
     private fun enrich(b: BudgetEntity): BudgetDto {
         val spent = if (b.categoryId == null) {
             transactionRepository.sumExpenseByWalletAndPeriod(b.walletId, b.periodStart, b.periodEnd)

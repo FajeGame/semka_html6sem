@@ -12,18 +12,22 @@ import ru.semka.repository.CategoryRepository
 import ru.semka.repository.TransactionRepository
 import ru.semka.security.AppUserDetails
 
+/** категории доходов/расходов: CRUD только для владельца кошелька; удаление — если нет операций. */
 @Service
 class CategoryService(
     private val categoryRepository: CategoryRepository,
     private val transactionRepository: TransactionRepository,
     private val access: WalletAccessService,
 ) {
+
+    // GET /categories/{id}
     fun get(categoryId: Long, user: AppUserDetails): CategoryDto {
         val cat = categoryRepository.findById(categoryId).orElseThrow { ApiException("NOT_FOUND", "категория не найдена") }
         access.requireMember(cat.walletId, user)
         return cat.toDto()
     }
 
+    // GET /categories?walletId&tip
     fun list(walletId: Long, tip: OperationType?, user: AppUserDetails): List<CategoryDto> {
         access.requireMember(walletId, user)
         val list = if (tip != null) {
@@ -34,6 +38,7 @@ class CategoryService(
         return list.map { it.toDto() }
     }
 
+    // POST /categories — только владелец
     @Transactional
     fun create(req: CreateCategoryRequest, user: AppUserDetails): CategoryDto {
         access.requireOwner(req.walletId, user)
@@ -50,6 +55,7 @@ class CategoryService(
         return cat.toDto()
     }
 
+    // PUT /categories/{id}
     @Transactional
     fun update(categoryId: Long, req: UpdateCategoryRequest, user: AppUserDetails): CategoryDto {
         val cat = categoryRepository.findById(categoryId).orElseThrow { ApiException("NOT_FOUND", "категория не найдена") }
@@ -60,6 +66,7 @@ class CategoryService(
         return categoryRepository.save(cat).toDto()
     }
 
+    // DELETE /categories/{id} — запрет, если есть операции
     @Transactional
     fun delete(categoryId: Long, user: AppUserDetails) {
         val cat = categoryRepository.findById(categoryId).orElseThrow { ApiException("NOT_FOUND", "категория не найдена") }

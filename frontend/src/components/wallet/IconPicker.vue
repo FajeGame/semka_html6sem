@@ -1,9 +1,12 @@
 <script setup lang="ts">
-// выбор иконки для новой категории
+/**
+ * сетка кнопок выбора иконки категории (v-model = iconKey).
+ * используется в OwnerPanel при создании своей категории.
+ */
 import { spisokIkonok } from '@/utils/categoryPresets'
 import CategorySvg from '@/components/icons/CategorySvg.vue'
 
-const model = defineModel<string>({ required: true })
+const model = defineModel<string>({ required: true }) // выбранный ключ иконки
 </script>
 
 <template>

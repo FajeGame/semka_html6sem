@@ -1,8 +1,11 @@
-// API отчётов: за период и расходы по участникам
+/**
+ * обёртки над REST /reports.
+ */
 import http, { useMock } from './http'
 import { mockDb } from './mockDb'
 import type { OtchetPeriod, RashodPoUchastniku } from '@/types/models'
 
+/** GET /reports/period */
 export async function apiOtchetPeriod(
   walletId: number,
   from: string,
@@ -15,6 +18,7 @@ export async function apiOtchetPeriod(
   return data
 }
 
+/** GET /reports/by-member */
 export async function apiRashodyPoLyudyam(
   walletId: number,
   from: string,

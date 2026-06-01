@@ -1,5 +1,6 @@
 package ru.semka.service
 
+import org.slf4j.LoggerFactory
 import org.springframework.cache.annotation.CacheEvict
 import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
@@ -13,6 +14,10 @@ import ru.semka.repository.*
 import ru.semka.security.AppUserDetails
 import java.math.BigDecimal
 
+/**
+ * сервис кошельков: список, CRUD, участники, баланс, приглашения.
+ * координирует walletRepository, memberRepository, category/budget для «первого запуска» кошелька.
+ */
 @Service
 class WalletService(
     private val walletRepository: WalletRepository,
@@ -21,20 +26,23 @@ class WalletService(
     private val categoryRepository: CategoryRepository,
     private val budgetRepository: BudgetRepository,
     private val transactionRepository: TransactionRepository,
-    private val access: WalletAccessService,
+    private val access: WalletAccessService, // проверка прав
 ) {
-    @Transactional
+    private val log = LoggerFactory.getLogger(javaClass)
+
+    // GET /wallets — только чтение; категории/бюджет по умолчанию — при открытии кошелька
+    @Transactional(readOnly = true)
     fun listWallets(user: AppUserDetails): List<WalletDto> {
-        cleanupDuplicateEmptyOwnedWallets(user.id)
-        return memberRepository.findByUserId(user.id)
-            .mapNotNull { m ->
-                val w = walletRepository.findById(m.walletId).orElse(null) ?: return@mapNotNull null
-                ensureWalletReady(w)
-                toWalletDto(w, m)
-            }
-            .distinctBy { it.id }
+        val members = memberRepository.findByUserId(user.id)
+        if (members.isEmpty()) return emptyList()
+        val walletsById = walletRepository.findAllById(members.map { it.walletId }).associateBy { it.id!! }
+        return members.mapNotNull { m ->
+            val w = walletsById[m.walletId] ?: return@mapNotNull null
+            toWalletDto(w, m)
+        }.distinctBy { it.id }
     }
 
+    // GET /wallets/{id}
     @Transactional
     fun getWallet(walletId: Long, user: AppUserDetails): WalletDto {
         val m = access.requireMember(walletId, user)
@@ -43,12 +51,13 @@ class WalletService(
         return toWalletDto(w, m)
     }
 
+    // POST /wallets — создатель становится WALLET_OWNER с canSeeBudget=true
     @Transactional
     fun createWallet(req: CreateWalletRequest, user: AppUserDetails): WalletDto {
         val name = req.name.trim()
         if (name.isBlank()) throw ApiException("VALIDATION_ERROR", "укажите название кошелька")
-        val wallet = walletRepository.save(WalletEntity(name = name, ownerId = user.id))
-        memberRepository.save(
+        val wallet = walletRepository.saveAndFlush(WalletEntity(name = name, ownerId = user.id))
+        val member = memberRepository.saveAndFlush(
             WalletMemberEntity(
                 walletId = wallet.id!!,
                 userId = user.id,
@@ -57,9 +66,11 @@ class WalletService(
             ),
         )
         ensureWalletReady(wallet)
-        return getWallet(wallet.id!!, user)
+        log.info("кошелёк создан: id={}, ownerId={}, name={}", wallet.id, user.id, wallet.name)
+        return toWalletDto(wallet, member)
     }
 
+    // GET /wallets/{id}/balance — кэш Redis 5 мин, ключ walletId
     @Cacheable(cacheNames = ["balance"], key = "#walletId")
     fun getBalance(walletId: Long, user: AppUserDetails): BalanceDto {
         access.requireMember(walletId, user)
@@ -68,9 +79,11 @@ class WalletService(
         return BalanceDto(income, expense, (income - expense).money())
     }
 
+    // сброс кэша баланса (вызывается из TransactionService и здесь)
     @CacheEvict(cacheNames = ["balance"], key = "#walletId")
     fun evictBalance(walletId: Long) {}
 
+    // GET /wallets/{id}/members
     fun listMembers(walletId: Long, user: AppUserDetails): List<MemberDto> {
         access.requireMember(walletId, user)
         return memberRepository.findByWalletId(walletId).map { m ->
@@ -79,6 +92,7 @@ class WalletService(
         }
     }
 
+    // POST /wallets/{id}/members — только владелец
     @Transactional
     @CacheEvict(cacheNames = ["balance"], key = "#walletId")
     fun invite(walletId: Long, nick: String, user: AppUserDetails) {
@@ -98,6 +112,7 @@ class WalletService(
         )
     }
 
+    // PUT /wallets/{id} — переименование
     @Transactional
     fun update(walletId: Long, req: UpdateWalletRequest, user: AppUserDetails): WalletDto {
         access.requireOwner(walletId, user)
@@ -107,6 +122,7 @@ class WalletService(
         return getWallet(walletId, user)
     }
 
+    // DELETE /wallets/{id} — каскадно удалятся операции, участники (Flyway FK)
     @Transactional
     @CacheEvict(cacheNames = ["balance"], key = "#walletId")
     fun deleteWallet(walletId: Long, user: AppUserDetails) {
@@ -117,6 +133,7 @@ class WalletService(
         walletRepository.deleteById(walletId)
     }
 
+    // DELETE /wallets/{id}/members/{memberId}
     @Transactional
     @CacheEvict(cacheNames = ["balance"], key = "#walletId")
     fun removeMember(walletId: Long, memberId: Long, user: AppUserDetails) {
@@ -129,6 +146,7 @@ class WalletService(
         memberRepository.delete(m)
     }
 
+    // POST /wallets/{id}/leave — участник выходит сам
     @Transactional
     @CacheEvict(cacheNames = ["balance"], key = "#walletId")
     fun leaveWallet(walletId: Long, user: AppUserDetails) {
@@ -142,6 +160,7 @@ class WalletService(
         memberRepository.delete(m)
     }
 
+    // PATCH /wallets/{id}/members/{memberId} — флаг canSeeBudget
     @Transactional
     fun setCanSeeBudget(walletId: Long, memberId: Long, canSee: Boolean, user: AppUserDetails) {
         access.requireOwner(walletId, user)
@@ -152,19 +171,7 @@ class WalletService(
         memberRepository.save(m)
     }
 
-    /** Удаляем пустые дубли: если есть «живой» кошелёк — все пустые; иначе оставляем один пустой. */
-    private fun cleanupDuplicateEmptyOwnedWallets(userId: Long) {
-        val owned = walletRepository.findByOwnerId(userId)
-        val emptyOwned = owned
-            .filter { transactionRepository.countByWalletId(it.id!!) == 0L }
-            .sortedBy { it.id }
-        if (emptyOwned.isEmpty()) return
-        val hasActive = owned.any { transactionRepository.countByWalletId(it.id!!) > 0L }
-        val toDelete = if (hasActive) emptyOwned else emptyOwned.drop(1)
-        toDelete.forEach { walletRepository.deleteById(it.id!!) }
-    }
-
-    /** Пустой кошелёк без категорий — дополняем дефолтами (после сбоев или старых тестов). */
+    // если в кошельке нет категорий — создать шаблоны и пустой бюджет месяца
     private fun ensureWalletReady(w: WalletEntity) {
         val wid = w.id!!
         if (categoryRepository.findByWalletId(wid).isNotEmpty()) return
@@ -184,6 +191,7 @@ class WalletService(
         evictBalance(wid)
     }
 
+    // Entity + membership → WalletDto с опциональными лимитами бюджета
     private fun toWalletDto(w: WalletEntity, m: WalletMemberEntity): WalletDto {
         val canSee = m.memberRole == MemberRole.WALLET_OWNER || m.canSeeBudget
         var limit: BigDecimal? = null
@@ -200,5 +208,4 @@ class WalletService(
         }
         return WalletDto(w.id!!, w.name, m.memberRole, canSee, limit, remaining)
     }
-
 }

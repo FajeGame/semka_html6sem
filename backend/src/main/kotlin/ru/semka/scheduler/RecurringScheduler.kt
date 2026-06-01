@@ -5,6 +5,10 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import ru.semka.service.RecurringService
 
+/**
+ * планировщик: раз в сутки (03:00) создаёт операции по правилам recurring_rules,
+ * у которых наступил day_of_month в текущем месяце и ещё не было проводки.
+ */
 @Component
 class RecurringScheduler(
     private val recurringService: RecurringService,
